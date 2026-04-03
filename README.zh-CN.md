@@ -247,7 +247,7 @@ Use this skill when reviewing React code for:
 - 漏写 `description`
 - 漏写 `## Available role skills`
 - role 引用了不存在的 skill
-- 两个 role 声明了同名 skill
+- 共享 role skill 明明存在，但在调用前没有先加载相关 role
 
 ## 最小示例
 

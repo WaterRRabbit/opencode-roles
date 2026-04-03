@@ -221,7 +221,7 @@ Common mistakes:
 - missing `description`
 - missing `## Available role skills`
 - a role references a skill that does not exist
-- two roles declare the same role skill
+- a shared role skill exists on disk, but the relevant role was not loaded before calling it
 
 ## Minimal example
 
