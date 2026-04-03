@@ -1,22 +1,75 @@
 # opencode-roles
 
-`opencode-roles` is an OpenCode plugin that adds role routing, lazy role activation, and role-scoped skill loading.
+**English** | [简体中文](./README.zh-CN.md)
 
-It is designed for public npm distribution so any OpenCode user can install it through the standard plugin mechanism documented by OpenCode.
+`opencode-roles` is an OpenCode plugin that adds a role layer on top of the normal skill system.
 
-## What it does
+It helps the model choose a domain-specific role first, then load that role's full instructions and role-specific skills only when needed.
 
-The plugin does three things:
+## Important
 
-1. Injects `<available_roles>` metadata into the system prompt.
-2. Registers a `role_load` tool that loads one role and activates its role skills for the current session.
-3. Overrides `skill({ name })` so normal skills keep working, while role skills remain unavailable until their role is activated.
+This plugin supports progressive skill disclosure through roles.
 
-## Install
+That matters because a traditional skill-only setup tends to expose every available skill up front. As the number of skills grows, too many unrelated skills get pulled into the model's decision space at the same time.
 
-OpenCode supports public plugins from npm through `opencode.json`.
+That usually leads to three problems:
 
-Add this plugin package name to your config:
+- unnecessary context usage
+- weaker task routing
+- more confusion between similar skills
+
+With `opencode-roles`, the model only sees lightweight role metadata first. The full role instructions and role-specific skills are revealed only after that role is selected and loaded.
+
+In practice, this keeps the prompt cleaner, reduces noise, and makes it easier for the model to use the right skills for the right task.
+
+## What is a role
+
+In this plugin, a `role` is a reusable expert identity for a specific domain or task type.
+
+A role usually defines:
+
+- who the model should act as
+- what it should pay attention to
+- how it should reason
+- which role-specific skills it can use
+
+Examples:
+
+- `frontend-architect`
+- `backend-reviewer`
+- `code-reviewer`
+
+A normal skill is a single capability.
+
+A role is a full working perspective.
+
+The role decides how the model should approach the task. The skill helps the model perform a more specific subtask inside that role.
+
+## Why use roles
+
+Roles are useful when you want OpenCode to behave differently across different kinds of work.
+
+Common use cases:
+
+- frontend architecture questions should be handled like a frontend architect
+- API design reviews should be handled like a backend reviewer
+- code review tasks should follow a consistent review style
+- role-specific instructions should not always live in the global system prompt
+- large skill libraries should not all be exposed to the model at once
+
+## What this plugin does
+
+The plugin adds three behaviors:
+
+1. It scans your available roles and injects only each role's `name` and `description` into the system prompt.
+2. It provides a `role_load` tool that loads one role's full instructions.
+3. It overrides `skill({ name })` so role skills are only available after their role is activated.
+
+This keeps the default prompt lightweight while still allowing rich domain-specific behavior.
+
+## Installation
+
+Create or update `opencode.json` in your project root:
 
 ```json
 {
@@ -25,34 +78,17 @@ Add this plugin package name to your config:
 }
 ```
 
-After restarting OpenCode, it will install the package automatically with Bun and cache it under `~/.cache/opencode/node_modules/`.
+Then restart OpenCode.
 
-Source: [OpenCode plugin docs](https://opencode.ai/docs/zh-cn/plugins/)
+OpenCode will install the npm package through its normal plugin mechanism.
 
-## Local development install
+## Directory layout
 
-If you are developing this plugin locally before publishing, build it and reference the built file from a local plugin directory:
-
-```bash
-npm install
-npm run build
-```
-
-Then copy or symlink `dist/index.js` into one of the official plugin directories:
-
-- `.opencode/plugins/`
-- `~/.config/opencode/plugins/`
-
-Public distribution should use the npm install path above.
-
-## Role layout
-
-The default workspace layout is:
+Default layout:
 
 ```text
 .opencode/
   roles/
-    config.json
     frontend-architect/
       ROLE.md
     backend-reviewer/
@@ -60,37 +96,99 @@ The default workspace layout is:
     skill/
       react-performance/
         SKILL.md
-      sql-safety/
+      api-contracts/
         SKILL.md
 ```
 
-`ROLE.md` must contain frontmatter:
+Rules:
+
+- each role has its own directory
+- each role directory must contain `ROLE.md`
+- role skills live under `.opencode/roles/skill/<skill-name>/SKILL.md`
+
+## ROLE.md format
+
+Each role must include frontmatter with:
+
+- `name`
+- `description`
+
+Example:
 
 ```md
 ---
 name: frontend-architect
-description: Design frontend architecture and enforce maintainable UI decisions
+description: Design frontend architecture, component boundaries, and UI implementation strategy
 ---
-```
 
-Each role must also include a section named `## Available role skills`, for example:
+You are the frontend architect role.
 
-```md
+Focus on:
+- component boundaries
+- state placement
+- rendering behavior
+- maintainable UI structure
+
 ## Available role skills
 
-- `react-performance`: Optimize rendering, state boundaries, and hydration behavior
-- `design-systems`: Enforce reusable UI primitives and token discipline
+- `react-performance`: Optimize React rendering, state boundaries, and unnecessary rerenders
 ```
 
-Role skills are resolved from:
+Requirements:
 
-```text
-.opencode/roles/skill/<skill-name>/SKILL.md
+- `name` must use lower-case hyphenated format such as `frontend-architect`
+- `description` is exposed to the model as role metadata
+- the file must contain a `## Available role skills` section
+- every listed skill must exist under `.opencode/roles/skill/`
+
+## SKILL.md format
+
+Role skills use the same `SKILL.md` format as normal skills.
+
+Example:
+
+```md
+---
+description: Improve React rendering performance and state boundaries
+---
+
+# React Performance
+
+Use this skill when reviewing React code for:
+- unnecessary rerenders
+- state placed too high in the tree
+- unstable props or closures
+- over-coupled components
 ```
 
-## Optional role roots
+## How it works at runtime
 
-You can add extra role roots in `.opencode/roles/config.json`:
+The expected flow is:
+
+1. the model sees the available roles
+2. it chooses the best role for the task
+3. it calls `role_load({ name })`
+4. the role becomes active for the session
+5. it can then call `skill({ name })` for that role's skills
+
+Example task routing:
+
+- React architecture problem -> `frontend-architect`
+- API contract review -> `backend-reviewer`
+- code review task -> `code-reviewer`
+
+## Behavior rules
+
+- only role `name` and `description` are injected into the system prompt
+- full role instructions are loaded lazily through `role_load`
+- role skills require their role to be activated first
+- if a role skill is requested too early, the plugin tells the model to call `role_load`
+- if a normal skill and a role skill share the same name, normal skill fallback still works until the role is activated
+- multiple roles can declare the same role skill, because role skills are treated as a shared skill library
+
+## Optional extra role roots
+
+If you do not want to keep all roles under `.opencode/roles`, add extra roots in `.opencode/roles/config.json`:
 
 ```json
 {
@@ -101,45 +199,82 @@ You can add extra role roots in `.opencode/roles/config.json`:
 }
 ```
 
-Relative paths resolve from the workspace root.
+Notes:
 
-## Runtime behavior
+- relative paths are resolved from the workspace root
+- `~/` is resolved from the user home directory
+- roles from all configured roots are merged
 
-- The plugin injects only role `name` and `description` into the system prompt.
-- The model is expected to call `role_load({ name })` before using a role skill.
-- `skill({ name })` first checks activated role skills, then falls back to normal OpenCode skills.
-- If a role skill exists but its role was not activated, the tool returns a directed error telling the model to call `role_load`.
-- If multiple roles declare the same role skill, the plugin reports a conflict instead of guessing.
+## Troubleshooting
 
-## Release workflow
+If the plugin does not appear to work, check these first:
 
-This repository now includes GitHub Actions workflows for CI and npm publishing:
+1. `opencode.json` includes `"plugin": ["opencode-roles"]`
+2. OpenCode was restarted after editing config
+3. `ROLE.md` contains valid frontmatter
+4. `ROLE.md` contains `## Available role skills`
+5. every listed role skill exists in `.opencode/roles/skill/<skill-name>/SKILL.md`
 
-- `.github/workflows/ci.yml`: runs `npm install`, `npm run check`, and `npm run build` on pushes to `main` and on pull requests.
-- `.github/workflows/publish.yml`: publishes to npm when you push a tag like `v0.1.0`.
-- `.github/workflows/release.yml`: manual workflow that bumps `package.json`, commits the version change, and creates the matching git tag.
+Common mistakes:
 
-Before the first publish, add an `NPM_TOKEN` repository secret in GitHub with permission to publish this package.
+- invalid role name format
+- missing `description`
+- missing `## Available role skills`
+- a role references a skill that does not exist
+- two roles declare the same role skill
 
-Recommended release flow:
+## Minimal example
 
-1. In GitHub, set repository secret `NPM_TOKEN`.
-2. Run the `Release` workflow and provide a version like `0.1.1`.
-3. The workflow commits the version bump and pushes tag `v0.1.1`.
-4. The `Publish` workflow validates that the tag matches `package.json`, then publishes to npm.
-5. OpenCode users install the package through `opencode.json`.
-
-If you prefer releasing locally, this still works:
-
-```bash
-npm install
-npm run check
-npm run build
-npm publish
+```text
+.opencode/
+  roles/
+    code-reviewer/
+      ROLE.md
+    skill/
+      review-checklist/
+        SKILL.md
 ```
 
-## Notes
+`ROLE.md`
 
-- This package currently assumes the published package name is `opencode-roles`.
-- The package exports the plugin as both the default export and the named export `OpenCodeRolesPlugin`.
-- `role-skill.ts` in this repository is kept as the original reference implementation; the publishable entrypoint is `src/index.ts`.
+```md
+---
+name: code-reviewer
+description: Perform practical code review with emphasis on bugs, regressions, and missing tests
+---
+
+You are the code reviewer role.
+
+Focus on:
+- correctness
+- regressions
+- missing tests
+
+## Available role skills
+
+- `review-checklist`: Review code using a checklist for bugs, regressions, and missing tests
+```
+
+`SKILL.md`
+
+```md
+---
+description: Review code using a checklist for bugs, regressions, and missing tests
+---
+
+# Review Checklist
+
+When reviewing code, check:
+- correctness under edge cases
+- behavioral regressions
+- missing tests for changed paths
+```
+
+## Final config
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-roles"]
+}
+```

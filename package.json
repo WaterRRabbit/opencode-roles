@@ -1,6 +1,6 @@
 {
   "name": "opencode-roles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Role routing and lazy role-specific skill loading for OpenCode.",
   "type": "module",
   "main": "./dist/index.js",

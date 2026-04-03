@@ -44,7 +44,6 @@ type RoleDefinition = {
 type RoleIndex = {
   roles: Map<string, RoleDefinition>
   skillOwners: Map<string, string[]>
-  conflicts: Map<string, string[]>
 }
 
 type SessionRoleEntry = {
@@ -269,7 +268,6 @@ async function loadRoleIndex(workspaceDir: string): Promise<RoleIndex> {
   const roleRoots = await resolveRoleRoots(workspaceDir)
   const roles = new Map<string, RoleDefinition>()
   const skillOwners = new Map<string, string[]>()
-  const conflicts = new Map<string, string[]>()
 
   for (const roleRoot of roleRoots) {
     if (!(await pathExists(roleRoot))) continue
@@ -312,7 +310,9 @@ async function loadRoleIndex(workspaceDir: string): Promise<RoleIndex> {
         })
 
         const owners = skillOwners.get(listedSkill.name) ?? []
-        owners.push(parsed.data.name)
+        if (!owners.includes(parsed.data.name)) {
+          owners.push(parsed.data.name)
+        }
         skillOwners.set(listedSkill.name, owners)
       }
 
@@ -320,20 +320,11 @@ async function loadRoleIndex(workspaceDir: string): Promise<RoleIndex> {
     }
   }
 
-  for (const [skillName, owners] of skillOwners.entries()) {
-    if (owners.length > 1) {
-      conflicts.set(skillName, owners)
-    }
-  }
-
-  return { roles, skillOwners, conflicts }
+  return { roles, skillOwners }
 }
 
 function buildAvailableRolesPrompt(index: RoleIndex) {
-  const conflictSkillNames = new Set(index.conflicts.keys())
-  const visibleRoles = Array.from(index.roles.values()).filter((role) =>
-    role.skills.every((skill) => !conflictSkillNames.has(skill.name)),
-  )
+  const visibleRoles = Array.from(index.roles.values())
 
   if (visibleRoles.length === 0) return ""
 
@@ -370,12 +361,6 @@ async function getRole(workspaceDir: string, roleName: string) {
 
   if (!role) {
     throw new Error(`Role "${roleName}" not found`)
-  }
-
-  for (const skill of role.skills) {
-    if (index.conflicts.has(skill.name)) {
-      throw new Error(`Role skill conflict for "${skill.name}": ${index.conflicts.get(skill.name)?.join(", ")}`)
-    }
   }
 
   return { index, role }
@@ -427,14 +412,10 @@ async function resolveNormalSkill(name: string, workspaceDir: string) {
   return null
 }
 
-async function findRoleOwnerForSkill(name: string, workspaceDir: string) {
-  const { skillOwners, conflicts } = await loadRoleIndex(workspaceDir)
-  if (conflicts.has(name)) {
-    throw new Error(`Role skill conflict for "${name}": ${conflicts.get(name)?.join(", ")}`)
-  }
-
+async function findRolesForSkill(name: string, workspaceDir: string) {
+  const { skillOwners } = await loadRoleIndex(workspaceDir)
   const owners = skillOwners.get(name) ?? []
-  return owners[0] ?? null
+  return owners
 }
 
 async function resolveRoleSkill(name: string, workspaceDir: string) {
@@ -518,9 +499,15 @@ async function skillExecute(
     return normalSkill.content
   }
 
-  const roleOwner = await findRoleOwnerForSkill(args.name, workspaceDir)
-  if (roleOwner) {
-    throw new Error(`Skill "${args.name}" belongs to role "${roleOwner}"; call role_load({ name: "${roleOwner}" }) first.`)
+  const roleOwners = await findRolesForSkill(args.name, workspaceDir)
+  if (roleOwners.length > 0) {
+    if (roleOwners.length === 1) {
+      throw new Error(`Skill "${args.name}" is declared by role "${roleOwners[0]}"; call role_load({ name: "${roleOwners[0]}" }) first.`)
+    }
+
+    throw new Error(
+      `Skill "${args.name}" is shared by roles ${roleOwners.map((name) => `"${name}"`).join(", ")}; call role_load for one of them first.`,
+    )
   }
 
   throw new Error(`Skill "${args.name}" not found`)
