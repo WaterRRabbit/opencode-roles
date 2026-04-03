@@ -531,18 +531,11 @@ export const OpenCodeRolesPlugin: Plugin = async ({ directory, worktree }) => {
 
   return {
     "experimental.chat.system.transform": async (_input, output) => {
-      const workspaceDir =
-        pluginWorkspaceDir ||
-        output.session?.directory ||
-        output.session?.worktree ||
-        output.directory ||
-        output.worktree
-
-      if (!workspaceDir) {
+      if (!pluginWorkspaceDir) {
         return
       }
 
-      const index = await loadRoleIndex(workspaceDir)
+      const index = await loadRoleIndex(pluginWorkspaceDir)
       const rolePrompt = buildAvailableRolesPrompt(index)
       if (!rolePrompt) {
         return
