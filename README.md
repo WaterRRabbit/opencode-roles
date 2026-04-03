@@ -111,21 +111,32 @@ Relative paths resolve from the workspace root.
 - If a role skill exists but its role was not activated, the tool returns a directed error telling the model to call `role_load`.
 - If multiple roles declare the same role skill, the plugin reports a conflict instead of guessing.
 
-## Publish
+## Release workflow
 
-Publish this package as a normal npm package:
+This repository now includes GitHub Actions workflows for CI and npm publishing:
+
+- `.github/workflows/ci.yml`: runs `npm install`, `npm run check`, and `npm run build` on pushes to `main` and on pull requests.
+- `.github/workflows/publish.yml`: publishes to npm when you push a tag like `v0.1.0`.
+- `.github/workflows/release.yml`: manual workflow that bumps `package.json`, commits the version change, and creates the matching git tag.
+
+Before the first publish, add an `NPM_TOKEN` repository secret in GitHub with permission to publish this package.
+
+Recommended release flow:
+
+1. In GitHub, set repository secret `NPM_TOKEN`.
+2. Run the `Release` workflow and provide a version like `0.1.1`.
+3. The workflow commits the version bump and pushes tag `v0.1.1`.
+4. The `Publish` workflow validates that the tag matches `package.json`, then publishes to npm.
+5. OpenCode users install the package through `opencode.json`.
+
+If you prefer releasing locally, this still works:
 
 ```bash
-npm publish --access public
+npm install
+npm run check
+npm run build
+npm publish
 ```
-
-Recommended release workflow:
-
-1. Run `npm install`
-2. Run `npm run check`
-3. Run `npm run build`
-4. Publish to npm
-5. Add the package name to `opencode.json`
 
 ## Notes
 
