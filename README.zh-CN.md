@@ -138,8 +138,8 @@ Focus on:
 
 - `name` 必须是小写连字符风格，例如 `frontend-architect`
 - `description` 会暴露给模型作为 role 简介
-- 必须包含 `## Available role skills` 这一节
-- 这一节里的每个 skill 名称都必须能在 `.opencode/roles/skill/` 下找到对应目录
+- `## Available role skills` 这一节是可选的
+- 如果写了这一节，那么其中列出的每个 skill 名称都必须能在 `.opencode/roles/skill/` 下找到对应目录
 
 ## SKILL.md 格式
 
@@ -238,14 +238,13 @@ Use this skill when reviewing React code for:
 1. `opencode.json` 里是否已经配置了 `"plugin": ["opencode-roles"]`
 2. OpenCode 是否已经重启
 3. `ROLE.md` 是否包含合法 frontmatter
-4. 是否包含 `## Available role skills`
-5. role 中列出的 skill 是否真的存在于 `.opencode/roles/skill/<skill-name>/SKILL.md`
+4. 如果写了 `## Available role skills`，其中列出的 skill 是否真的存在于 `.opencode/roles/skill/<skill-name>/SKILL.md`
 
 常见错误：
 
 - role 名称不是小写连字符格式
 - 漏写 `description`
-- 漏写 `## Available role skills`
+- `## Available role skills` 这一节格式写错
 - role 引用了不存在的 skill
 - 共享 role skill 明明存在，但在调用前没有先加载相关 role
 

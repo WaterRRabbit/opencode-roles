@@ -138,8 +138,8 @@ Requirements:
 
 - `name` must use lower-case hyphenated format such as `frontend-architect`
 - `description` is exposed to the model as role metadata
-- the file must contain a `## Available role skills` section
-- every listed skill must exist under `.opencode/roles/skill/`
+- `## Available role skills` is optional
+- if you include that section, every listed skill must exist under `.opencode/roles/skill/`
 
 ## SKILL.md format
 
@@ -212,14 +212,13 @@ If the plugin does not appear to work, check these first:
 1. `opencode.json` includes `"plugin": ["opencode-roles"]`
 2. OpenCode was restarted after editing config
 3. `ROLE.md` contains valid frontmatter
-4. `ROLE.md` contains `## Available role skills`
-5. every listed role skill exists in `.opencode/roles/skill/<skill-name>/SKILL.md`
+4. if `## Available role skills` exists, its listed skills actually exist in `.opencode/roles/skill/<skill-name>/SKILL.md`
 
 Common mistakes:
 
 - invalid role name format
 - missing `description`
-- missing `## Available role skills`
+- malformed `## Available role skills` content
 - a role references a skill that does not exist
 - a shared role skill exists on disk, but the relevant role was not loaded before calling it
 

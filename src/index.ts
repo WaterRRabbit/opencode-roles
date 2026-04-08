@@ -151,7 +151,7 @@ function parseAvailableRoleSkills(body: string) {
   }
 
   if (!inSection) {
-    throw new Error('Missing "## Available role skills" section')
+    return []
   }
 
   return skills
@@ -471,7 +471,9 @@ async function roleLoadExecute(
     role.body || "(empty)",
     "",
     "## Role Skills",
-    ...skills.map((skill, index) => `${index + 1}. ${skill.name}: ${skill.description}`),
+    ...(skills.length > 0
+      ? skills.map((skill, index) => `${index + 1}. ${skill.name}: ${skill.description}`)
+      : ["(none)"]),
   ].join("\n")
 }
 
