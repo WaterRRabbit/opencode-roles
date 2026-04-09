@@ -63,7 +63,7 @@ The plugin adds three behaviors:
 
 1. It scans your available roles and injects only each role's `name` and `description` into the system prompt.
 2. It provides a `role_load` tool that loads one role's full instructions.
-3. It overrides `skill({ name })` so role skills are only available after their role is activated.
+3. It provides a `role_skill({ name })` tool for role-specific skills without overriding OpenCode's built-in `skill` tool.
 
 This keeps the default prompt lightweight while still allowing rich domain-specific behavior.
 
@@ -93,7 +93,7 @@ Default layout:
       ROLE.md
     backend-reviewer/
       ROLE.md
-    skill/
+    skills/
       react-performance/
         SKILL.md
       api-contracts/
@@ -104,7 +104,7 @@ Rules:
 
 - each role has its own directory
 - each role directory must contain `ROLE.md`
-- role skills live under `.opencode/roles/skill/<skill-name>/SKILL.md`
+- role skills live under `.opencode/roles/skills/<skill-name>/SKILL.md`
 
 ## ROLE.md format
 
@@ -139,7 +139,7 @@ Requirements:
 - `name` must use lower-case hyphenated format such as `frontend-architect`
 - `description` is exposed to the model as role metadata
 - `## Available role skills` is optional
-- if you include that section, every listed skill must exist under `.opencode/roles/skill/`
+- if you include that section, every listed skill must exist under `.opencode/roles/skills/`
 
 ## SKILL.md format
 
@@ -169,7 +169,7 @@ The expected flow is:
 2. it chooses the best role for the task
 3. it calls `role_load({ name })`
 4. the role becomes active for the session
-5. it can then call `skill({ name })` for that role's skills
+5. it can then call `role_skill({ name })` for that role's skills
 
 Example task routing:
 
@@ -181,9 +181,9 @@ Example task routing:
 
 - only role `name` and `description` are injected into the system prompt
 - full role instructions are loaded lazily through `role_load`
-- role skills require their role to be activated first
+- role skills require their role to be activated first and are loaded through `role_skill`
+- the built-in `skill` tool remains untouched for normal OpenCode skills
 - if a role skill is requested too early, the plugin tells the model to call `role_load`
-- if a normal skill and a role skill share the same name, normal skill fallback still works until the role is activated
 - multiple roles can declare the same role skill, because role skills are treated as a shared skill library
 
 ## Optional extra role roots
@@ -212,7 +212,7 @@ If the plugin does not appear to work, check these first:
 1. `opencode.json` includes `"plugin": ["opencode-roles"]`
 2. OpenCode was restarted after editing config
 3. `ROLE.md` contains valid frontmatter
-4. if `## Available role skills` exists, its listed skills actually exist in `.opencode/roles/skill/<skill-name>/SKILL.md`
+4. if `## Available role skills` exists, its listed skills actually exist in `.opencode/roles/skills/<skill-name>/SKILL.md`
 
 Common mistakes:
 
@@ -229,7 +229,7 @@ Common mistakes:
   roles/
     code-reviewer/
       ROLE.md
-    skill/
+    skills/
       review-checklist/
         SKILL.md
 ```

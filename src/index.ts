@@ -8,9 +8,9 @@ const ROLE_DISCLOSURE_RULES = [
   "Role routing rule:",
   "When a task appears domain-specific, choose the best role from <available_roles> first.",
   "Call role_load({ name }) to load that role's full instructions and its role-specific skill index.",
-  "The skill({ name }) tool resolves both normal skills and role skills.",
+  "Use role_skill({ name }) for role-specific skills after a role has been loaded.",
+  "Use the built-in skill({ name }) tool for normal OpenCode skills.",
   "Role skills are only available after their owning role has been activated with role_load({ name }).",
-  "If a role is not activated and a normal skill with the same name exists, skill({ name }) falls back to the normal skill.",
 ].join(" ")
 
 const NORMAL_SKILL_PATHS = [
@@ -268,55 +268,90 @@ async function loadRoleIndex(workspaceDir: string): Promise<RoleIndex> {
   const roleRoots = await resolveRoleRoots(workspaceDir)
   const roles = new Map<string, RoleDefinition>()
   const skillOwners = new Map<string, string[]>()
+  const hiddenRoleNames = new Set<string>()
 
   for (const roleRoot of roleRoots) {
     if (!(await pathExists(roleRoot))) continue
 
-    const roleSkillRoot = path.join(roleRoot, "skill")
-    const roleEntries = await fs.readdir(roleRoot, { withFileTypes: true })
+    const roleSkillRoot = path.join(roleRoot, "skills")
+    let roleEntries: Array<{ isDirectory: () => boolean; name: string }>
+    try {
+      roleEntries = (await fs.readdir(roleRoot, { withFileTypes: true })) as Array<{
+        isDirectory: () => boolean
+        name: string
+      }>
+    } catch {
+      continue
+    }
 
     for (const entry of roleEntries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "skill") continue
+      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "skills") continue
 
       const rolePath = path.join(roleRoot, entry.name, "ROLE.md")
       if (!(await pathExists(rolePath))) continue
 
-      const parsed = parseFrontmatter(await fs.readFile(rolePath, "utf8"))
-      const listedSkills = parseAvailableRoleSkills(parsed.body)
-      const role: RoleDefinition = {
-        slug: entry.name,
-        name: parsed.data.name,
-        description: parsed.data.description,
-        body: parsed.body,
-        filePath: rolePath,
-        rootPath: roleRoot,
-        skills: [],
-      }
-
-      if (roles.has(parsed.data.name)) {
-        throw new Error(`Duplicate role "${parsed.data.name}" found in multiple role roots`)
-      }
-
-      for (const listedSkill of listedSkills) {
-        const skillPath = path.join(roleSkillRoot, listedSkill.name, "SKILL.md")
-        if (!(await pathExists(skillPath))) {
-          throw new Error(`Role "${parsed.data.name}" references missing skill "${listedSkill.name}"`)
+      try {
+        const parsed = parseFrontmatter(await fs.readFile(rolePath, "utf8"))
+        const normalizedRoleName = normalizeName(parsed.data.name)
+        if (hiddenRoleNames.has(normalizedRoleName)) {
+          continue
         }
 
-        role.skills.push({
-          name: listedSkill.name,
-          description: listedSkill.description,
-          path: skillPath,
-        })
-
-        const owners = skillOwners.get(listedSkill.name) ?? []
-        if (!owners.includes(parsed.data.name)) {
-          owners.push(parsed.data.name)
+        if (roles.has(normalizedRoleName)) {
+          const previousRole = roles.get(normalizedRoleName)
+          if (previousRole) {
+            for (const skill of previousRole.skills) {
+              const owners = skillOwners.get(skill.name) ?? []
+              skillOwners.set(
+                skill.name,
+                owners.filter((owner) => owner !== previousRole.name),
+              )
+            }
+          }
+          roles.delete(normalizedRoleName)
+          hiddenRoleNames.add(normalizedRoleName)
+          continue
         }
-        skillOwners.set(listedSkill.name, owners)
-      }
 
-      roles.set(parsed.data.name, role)
+        const listedSkills = parseAvailableRoleSkills(parsed.body)
+        const role: RoleDefinition = {
+          slug: entry.name,
+          name: parsed.data.name,
+          description: parsed.data.description,
+          body: parsed.body,
+          filePath: rolePath,
+          rootPath: roleRoot,
+          skills: [],
+        }
+        const pendingSkillOwners = new Map<string, string[]>()
+
+        for (const listedSkill of listedSkills) {
+          const skillPath = path.join(roleSkillRoot, listedSkill.name, "SKILL.md")
+          if (!(await pathExists(skillPath))) {
+            throw new Error("invalid role")
+          }
+
+          role.skills.push({
+            name: listedSkill.name,
+            description: listedSkill.description,
+            path: skillPath,
+          })
+
+          const owners = pendingSkillOwners.get(listedSkill.name) ?? [...(skillOwners.get(listedSkill.name) ?? [])]
+          if (!owners.includes(parsed.data.name)) {
+            owners.push(parsed.data.name)
+          }
+          pendingSkillOwners.set(listedSkill.name, owners)
+        }
+
+        for (const [skillName, owners] of pendingSkillOwners.entries()) {
+          skillOwners.set(skillName, owners)
+        }
+
+        roles.set(normalizedRoleName, role)
+      } catch {
+        continue
+      }
     }
   }
 
@@ -379,37 +414,6 @@ function getSessionEntry(sessionID: string) {
 
   entry.updatedAt = Date.now()
   return entry
-}
-
-async function resolveNormalSkill(name: string, workspaceDir: string) {
-  const candidateDirs: string[] = []
-
-  for (const parts of NORMAL_SKILL_PATHS) {
-    candidateDirs.push(path.join(workspaceDir, ...parts))
-  }
-
-  for (const parts of GLOBAL_SKILL_PATHS) {
-    candidateDirs.push(path.join(...parts))
-  }
-
-  const config = await readOpenCodeConfig(workspaceDir)
-  const configuredPaths = Array.isArray(config?.skills?.paths) ? config.skills.paths : []
-  for (const configuredPath of configuredPaths) {
-    if (typeof configuredPath !== "string") continue
-    candidateDirs.push(resolveConfiguredPath(workspaceDir, configuredPath))
-  }
-
-  for (const dir of candidateDirs) {
-    const skillPath = path.join(dir, name, "SKILL.md")
-    if (await pathExists(skillPath)) {
-      return {
-        path: skillPath,
-        content: await fs.readFile(skillPath, "utf8"),
-      }
-    }
-  }
-
-  return null
 }
 
 async function findRolesForSkill(name: string, workspaceDir: string) {
@@ -477,13 +481,13 @@ async function roleLoadExecute(
   ].join("\n")
 }
 
-async function skillExecute(
+async function roleSkillExecute(
   args: { name: string },
   context: { directory?: string; worktree?: string; sessionID: string },
 ) {
   const workspaceDir = context.directory || context.worktree
   if (!workspaceDir) {
-    throw new Error("skill requires a workspace directory")
+    throw new Error("role_skill requires a workspace directory")
   }
 
   await ensureSkillAllowed(workspaceDir, args.name)
@@ -496,23 +500,18 @@ async function skillExecute(
     }
   }
 
-  const normalSkill = await resolveNormalSkill(args.name, workspaceDir)
-  if (normalSkill) {
-    return normalSkill.content
-  }
-
   const roleOwners = await findRolesForSkill(args.name, workspaceDir)
   if (roleOwners.length > 0) {
     if (roleOwners.length === 1) {
-      throw new Error(`Skill "${args.name}" is declared by role "${roleOwners[0]}"; call role_load({ name: "${roleOwners[0]}" }) first.`)
+      throw new Error(`Role skill "${args.name}" is declared by role "${roleOwners[0]}"; call role_load({ name: "${roleOwners[0]}" }) first.`)
     }
 
     throw new Error(
-      `Skill "${args.name}" is shared by roles ${roleOwners.map((name) => `"${name}"`).join(", ")}; call role_load for one of them first.`,
+      `Role skill "${args.name}" is shared by roles ${roleOwners.map((name) => `"${name}"`).join(", ")}; call role_load for one of them first.`,
     )
   }
 
-  throw new Error(`Skill "${args.name}" not found`)
+  throw new Error(`Role skill "${args.name}" not found`)
 }
 
 export const OpenCodeRolesPlugin: Plugin = async ({ directory, worktree }) => {
@@ -545,12 +544,12 @@ export const OpenCodeRolesPlugin: Plugin = async ({ directory, worktree }) => {
         },
         execute: roleLoadExecute,
       }),
-      skill: tool({
-        description: "Load a skill by name, supporting both normal skills and role skills",
+      role_skill: tool({
+        description: "Load a role-specific skill by name after its role has been activated",
         args: {
-          name: tool.schema.string().describe("Skill name to load"),
+          name: tool.schema.string().describe("Role skill name to load"),
         },
-        execute: skillExecute,
+        execute: roleSkillExecute,
       }),
     },
   }

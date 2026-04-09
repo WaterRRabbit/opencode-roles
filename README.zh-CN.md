@@ -58,7 +58,7 @@ role 先决定“用什么身份来处理问题”，skill 再决定“调用什
 
 1. 扫描你定义的 role，并把 role 的 `name` 和 `description` 注入到系统提示中
 2. 提供一个 `role_load` 工具，用来加载某个 role 的完整说明
-3. 接管 `skill({ name })`，让 role 专属 skill 只有在对应 role 被激活后才能使用
+3. 提供一个 `role_skill({ name })` 工具来加载 role 专属 skill，并且不会覆盖 OpenCode 内置的 `skill` 工具
 
 这样做的好处是：
 
@@ -93,7 +93,7 @@ OpenCode 会按官方插件机制自动安装 npm 包。
       ROLE.md
     backend-reviewer/
       ROLE.md
-    skill/
+    skills/
       react-performance/
         SKILL.md
       api-contracts/
@@ -104,7 +104,7 @@ OpenCode 会按官方插件机制自动安装 npm 包。
 
 - 每个 role 一个目录
 - 每个 role 目录下必须有一个 `ROLE.md`
-- 所有 role skill 放在 `.opencode/roles/skill/<skill-name>/SKILL.md`
+- 所有 role skill 放在 `.opencode/roles/skills/<skill-name>/SKILL.md`
 
 ## ROLE.md 格式
 
@@ -139,7 +139,7 @@ Focus on:
 - `name` 必须是小写连字符风格，例如 `frontend-architect`
 - `description` 会暴露给模型作为 role 简介
 - `## Available role skills` 这一节是可选的
-- 如果写了这一节，那么其中列出的每个 skill 名称都必须能在 `.opencode/roles/skill/` 下找到对应目录
+- 如果写了这一节，那么其中列出的每个 skill 名称都必须能在 `.opencode/roles/skills/` 下找到对应目录
 
 ## SKILL.md 格式
 
@@ -169,7 +169,7 @@ Use this skill when reviewing React code for:
 
 1. 模型先根据任务选择最合适的 role
 2. 调用 `role_load({ name })`
-3. role 被激活后，再调用该 role 对应的 `skill({ name })`
+3. role 被激活后，再调用该 role 对应的 `role_skill({ name })`
 4. 最后按该 role 的工作方式输出结果
 
 例如，你可以这样提问：
@@ -226,9 +226,9 @@ Use this skill when reviewing React code for:
 
 - system prompt 中只注入 role 的 `name` 和 `description`
 - role 的完整正文不会提前全部注入，而是在 `role_load` 时按需加载
-- role skill 必须先激活对应 role 才能使用
+- role skill 必须先激活对应 role 才能使用，并通过 `role_skill` 加载
+- OpenCode 内置的 `skill` 工具保持不变，仍用于普通 skill
 - 如果某个 role skill 尚未激活，插件会提示先调用 `role_load`
-- 如果普通 skill 和 role skill 同名，未激活 role 时优先回退到普通 skill
 - 多个 role 可以声明同名 role skill，因为 role skill 会被视为共享 skill 库
 
 ## 排错
@@ -238,7 +238,7 @@ Use this skill when reviewing React code for:
 1. `opencode.json` 里是否已经配置了 `"plugin": ["opencode-roles"]`
 2. OpenCode 是否已经重启
 3. `ROLE.md` 是否包含合法 frontmatter
-4. 如果写了 `## Available role skills`，其中列出的 skill 是否真的存在于 `.opencode/roles/skill/<skill-name>/SKILL.md`
+4. 如果写了 `## Available role skills`，其中列出的 skill 是否真的存在于 `.opencode/roles/skills/<skill-name>/SKILL.md`
 
 常见错误：
 
@@ -255,7 +255,7 @@ Use this skill when reviewing React code for:
   roles/
     code-reviewer/
       ROLE.md
-    skill/
+    skills/
       review-checklist/
         SKILL.md
 ```
